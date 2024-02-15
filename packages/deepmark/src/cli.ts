@@ -43,7 +43,10 @@ export function createCli() {
 			// resolve source paths
 			const sourceFilePaths = await getSourceFilePaths(config);
 
+			console.log("***** Starting translation *****");
 			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.md) {
+				console.log("File : ./docs" + sourceFilePath.split("/docs")[1]);
+				console.log("- extracting file");
 				const markdown = await getFile(sourceFilePath);
 
 				// extract strings
@@ -51,6 +54,7 @@ export function createCli() {
 				const strings = extractMdastStrings({ mdast, config });
 
 				// translate strings
+				console.log("- translating file");
 				const translations = await translate({ strings, mode: options.mode, config });
 
 				for (const targetLanguage of config.outputLanguages) {
@@ -61,6 +65,7 @@ export function createCli() {
 						config
 					});
 
+					console.log("- formatting translated file");
 					let markdown = getMarkdown(_mdast);
 					//remove redundant new lines
 					markdown = markdown.replace(/(^[\S]*\*.*)\n\n/gm, '$1\n');
@@ -107,13 +112,19 @@ export function createCli() {
 					markdown = markdown.replace(/(^-\s#[0-9]+)\s\\\[([a-zA-Z ]+])/gm, '$1 [$2'); //Fourth replace - #NUMBER \[TEXT an spac
 
 					// write translated file
+					console.log("- writing file");
 					await fs.outputFile(
 						outputFilePath.replace(/\$langcode\$/, targetLanguage),
 						markdown,
 						{ encoding: "utf-8" }
 					);
+					console.log("- file translation DONE");
+        			console.log("");
 				}
 			}
+
+			console.log("***** Translation DONE *****");
+    		console.log("");
 
 			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.json) {
 				const json = await getFile(sourceFilePath);
