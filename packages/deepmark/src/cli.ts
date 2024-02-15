@@ -60,11 +60,57 @@ export function createCli() {
 						strings: translations[targetLanguage]!,
 						config
 					});
+
+					let markdown = getMarkdown(_mdast);
+					//remove redundant new lines
+					markdown = markdown.replace(/(^[\S]*\*.*)\n\n/gm, '$1\n');
+					markdown = markdown.replace(/(^[\s]*\*.*)\n\n/gm, '$1\n');
+					//replace * with - (and remove redundant spaces) to deep of 4 levels
+					markdown = markdown.replace(/(\n\*[\s]{3})(.*)/gm,         '\n- $2');
+					markdown = markdown.replace(/(\n[\s]{4}\*[\s]{3})(.*)/gm,  '\n\t- $2');
+					markdown = markdown.replace(/(\n[\s]{8}\*[\s]{3})(.*)/gm,  '\n\t\t- $2');
+					markdown = markdown.replace(/(\n[\s]{12}\*[\s]{3})(.*)/gm, '\n\t\t\t- $2');
+					//Headline fix - add new line before headline
+					markdown = markdown.replace(/(^[\S]*-[\S]*.*)\n([\#]+.*)/gm, '$1\n\n$2'); //fix bold headlines
+					//Fix Bold healines - add new line before and after bold text (that is headline)
+					markdown = markdown.replace(/([^\n])\n(^\*\*[0-1a-zA-Z ]+\*\*)/gm, '$1\n\n$2');
+					markdown = markdown.replace(/(^\*\*[0-1a-zA-Z ]+\*\*)\n([^\n])/gm, '$1\n\n$2');
+					//Fix image links - add new line before and after image (if necessary)
+					markdown = markdown.replace(/([^\n])\n(^!\[\]\([^()]+\))/gm, '$1\n\n$2');
+					markdown = markdown.replace(/(^!\[\]\([^()]+\))\n([^\n])/gm, '$1\n\n$2');
+					//Fix image tags - add new line before and after image (if necessary)
+					markdown = markdown.replace(/([^\n])\n(^<img.*\/>)/gm, '$1\n\n$2');
+					markdown = markdown.replace(/(^<img.*\/>)\n([^\n])/gm, '$1\n\n$2');
+					//Fix list header, so between list and header is NOT line and list header is separated from rest of text
+					/*
+					* Something something:
+					* - something
+					* - something 
+					*/
+					markdown = markdown.replace(/(^.*:\n)\n(^[\s]*-)/gm, '$1$2');
+					markdown = markdown.replace(/([^\n])\n(^.*:\n)/gm, '$1\n\n$2');
+					//FIX - markdown gonna fuck the iframe end tag, need to be fixed or everything after this error not gonna show
+					markdown = markdown.replace(/(^<div class="video-container">\n[\s]*)(<iframe.*)\/>(\n<\/div>)/gm, '$1$2></iframe>$3');
+					//FIX fucking end tags
+					markdown = markdown.replace(/(<[^<>]*)[\s]>/gm, '$1>');
+					//Special case, if file start with * (in _sidebar.md)
+					markdown = markdown.replace(/^\*[\s]*([^*]*)\n/gm, '- $1');
+					//Special case, \[ to [ (in ROADMAP.md
+					//For safety, we will replace only if there is combination '- \[ ]' or '- \[x]' at START of line
+					markdown = markdown.replace(/^-\s\\\[\s\]/gm, '- [ ]');
+					markdown = markdown.replace(/^-\s\\\[x\]/gm, '- [x]');
+
+					//Special case for OLD changelog - 2020
+					markdown = markdown.replace(/^-\s\\\[([a-zA-Z ]+])/gm, '- [$1'); //First replace - \[TEXT AND space
+					markdown = markdown.replace(/^-\s\\\#([0-9]+)/gm, '- #$1'); //Second replace - \#NUMBER
+					markdown = markdown.replace(/^[\s]*\\\#([0-9]+)/gm, '#$1'); //Third replace \#NUMBER
+					markdown = markdown.replace(/(^-\s#[0-9]+)\s\\\[([a-zA-Z ]+])/gm, '$1 [$2'); //Fourth replace - #NUMBER \[TEXT an spac
+
 					// write translated file
 					await fs.outputFile(
 						outputFilePath.replace(/\$langcode\$/, targetLanguage),
-						getMarkdown(_mdast),
-						{ encoding: 'utf-8' }
+						markdown,
+						{ encoding: "utf-8" }
 					);
 				}
 			}
