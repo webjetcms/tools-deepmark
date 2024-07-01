@@ -466,6 +466,7 @@ export async function getSourceFilePaths(
 				continue;
 			}
 
+			
 			//Exclude pictures
 			if (path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg")) { 
 				continue;

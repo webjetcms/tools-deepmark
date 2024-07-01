@@ -45,6 +45,7 @@ export function createCli() {
 
 			console.log("***** Starting translation *****");
 			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.md) {
+				
 				console.log("File : ./docs" + sourceFilePath.split("/docs")[1]);
 				console.log("- extracting file");
 				const markdown = await getFile(sourceFilePath);
