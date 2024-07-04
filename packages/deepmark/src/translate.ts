@@ -45,33 +45,15 @@ export async function translate({
 				queue.push([index, string]);
 				_translations.push('');
 
-				if ((index === strings.length - 1 && queue.length > 0) || queue.length === 10) {
-					const indexes = queue.map(([index]) => index);
-					const _strings = queue.map(([__, string]) => string);
-
-					const results = await deepl.translateText(
-						_strings,
-						config.sourceLanguage,
-						targetLanguage,
-						{
-							tagHandling: 'html',
-							splitSentences: 'nonewlines'
-						}
-					);
-
-					queue.reverse();
-					for (let j = 0; j < indexes.length; j++) {
-						const index = indexes[j];
-						const translation = results[j].text;
-						const string = _strings[j];
-
-						if (memorize)
-							db.setTranslation({ source: string, language: targetLanguage, translation });
-
-						_translations[index] = translation;
-						queue.pop();
-					}
+				//Translate strings using DeepL in batches of 10 
+				if(queue.length > 0) {
+					await deeplTrasnlate(queue, deepl, config, targetLanguage, _translations, db, memorize);
 				}
+			}
+
+			//Translate left over string from queue using DeepL
+			if (queue.length > 0) {
+				await deeplTrasnlate(queue, deepl, config, targetLanguage, _translations, db, memorize);
 			}
 
 			translations[targetLanguage] = _translations;
@@ -99,4 +81,40 @@ export async function translate({
 	}
 
 	return translations;
+}
+
+async function deeplTrasnlate(
+	queue: [number, string][],
+	deepl: Translator,
+	config: Config,
+	targetLanguage: TargetLanguageCode,
+	_translations: string[],
+	db: Database,
+	memorize: boolean
+): Promise<void> {
+	const indexes = queue.map(([index2]) => index2);
+	const _strings = queue.map(([__, string2]) => string2);
+
+	const results = await deepl.translateText(
+		_strings,
+		config.sourceLanguage,
+		targetLanguage,
+		{
+			tagHandling: "html",
+			splitSentences: "nonewlines"
+		}
+	);
+
+	queue.reverse();
+	for (let j = 0; j < indexes.length; j++) {
+		const index2 = indexes[j];
+		const translation = results[j].text;
+		const string2 = _strings[j];
+
+		if (memorize)
+			db.setTranslation({ source: string2, language: targetLanguage, translation });
+		
+		_translations[index2] = translation;
+		queue.pop();
+	}
 }
