@@ -46,7 +46,7 @@ export async function translate({
 				_translations.push('');
 
 				//Translate strings using DeepL in batches of 10 
-				if(queue.length > 0) {
+				if(queue.length > 10) {
 					await deeplTrasnlate(queue, deepl, config, targetLanguage, _translations, db, memorize);
 				}
 			}
