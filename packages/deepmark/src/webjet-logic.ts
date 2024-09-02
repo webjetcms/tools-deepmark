@@ -4,17 +4,20 @@ import np from "node:path";
 
 /**
  * Retrieves the configuration file path.
+ * If Widows is detect sanitizes the slashes and adds the file:// prefix (if missing).
  * 
- * @param {string} path - The path to the configuration file. If not provided, the default path "deepmark.config.mjs" will be used.
- * @param {boolean} doWindowsEdit - Indicates whether to perform Windows-specific edits on the file path. Default is false.
+ * @param {String} path - The path to the configuration file. If not provided, the default path "deepmark.config.mjs" will be used.
  * @returns {String} The resolved configuration file path.
  */
 export async function getConfigFilePath(path: string, doWindowsEdit = false) {
     let configFilePathTmp = path ? path.startsWith("/") ? path : np.resolve(process.cwd(), path) : np.resolve(process.cwd(), "deepmark.config.mjs");
   
-    if(doWindowsEdit === true) {
-      configFilePathTmp = configFilePathTmp.replaceAll("\\", "/");
-      if(configFilePathTmp.startsWith("file://") === false) configFilePathTmp = "file://" + configFilePathTmp;
+    //Detect Windows OS by slahes
+    if(configFilePathTmp.includes("\\")) {
+        //Fix slashes
+        configFilePathTmp = configFilePathTmp.replaceAll("\\", "/");
+        //Fix prefix
+        if(configFilePathTmp.startsWith("file://") === false) configFilePathTmp = "file://" + configFilePathTmp;
     }
   
     return configFilePathTmp;
@@ -29,7 +32,7 @@ export async function getConfigFilePath(path: string, doWindowsEdit = false) {
 export function beforeFormatMarkdownPrepare(markdown: string) {
     markdown = markdown.replace(/<br\s*\/?>/gi, '<!-- br -->');
 
-    return removeIgnoredContent(markdown);
+    return _removeIgnoredContent(markdown);
 }
 
 /**
@@ -85,14 +88,14 @@ export async function customizeTranslatedMarkdown(markdown2: string, options: an
     }
 
     //Enhance markdown
-    markdown2 = await translateLinkSubCategory(markdown2, options, config, targetLanguage);
-    markdown2 = markdownRegexEdit(markdown2);
+    markdown2 = await _translateLinkSubCategory(markdown2, options, config, targetLanguage);
+    markdown2 = _markdownRegexEdit(markdown2);
 
     //Return blocks of code
-    markdown2 = insertBlocksOfCode(markdown2, extractedBlocksOfCode);
+    markdown2 = _insertBlocksOfCode(markdown2, extractedBlocksOfCode);
 
     //Return ignored content
-    markdown2 = insertIgnoredContent(markdown2, ignoredContent);
+    markdown2 = _insertIgnoredContent(markdown2, ignoredContent);
 
     return markdown2;
 }
@@ -105,7 +108,7 @@ export async function customizeTranslatedMarkdown(markdown2: string, options: an
  * @param {String[]} extractedBlocksOfCode 
  * @returns -  markdown with inserted blocks of code
  */
-function insertBlocksOfCode(markdown2: string, extractedBlocksOfCode: RegExpMatchArray | null) {
+function _insertBlocksOfCode(markdown2: string, extractedBlocksOfCode: RegExpMatchArray | null) {
     if(extractedBlocksOfCode !== undefined && extractedBlocksOfCode !== null) {
         for(let i = 0; i < extractedBlocksOfCode.length; i++) {
             //Replace <!-- br --> back to <br>
@@ -132,7 +135,7 @@ function insertBlocksOfCode(markdown2: string, extractedBlocksOfCode: RegExpMatc
  * @param {String} targetLanguage 
  * @returns - enhanced markdown with translated subcategories in links
  */
-async function translateLinkSubCategory(markdown: string, options: { mode: any; }, config: any, targetLanguage: 'en-US' | 'sk' | 'cs') {
+async function _translateLinkSubCategory(markdown: string, options: { mode: any; }, config: any, targetLanguage: 'en-US' | 'sk' | 'cs') {
     //Extract links from the markdown
     const links  = markdown.match(/(\[[^\]]+\])\((?!http)[^#\)]*(#[^\)]+)\)/g);
     if(links === undefined || links === null) return markdown;
@@ -174,7 +177,7 @@ async function translateLinkSubCategory(markdown: string, options: { mode: any; 
  * @param {String} markdown2 
  * @returns - enhanced markdown
  */
-function markdownRegexEdit(markdown2: string) {
+function _markdownRegexEdit(markdown2: string) {
     //Replace the * with -
     markdown2 = markdown2.replace(/(\n\*[\s]{3})(.*)/gm, "\n- $2");
     markdown2 = markdown2.replace(/(\n[\s]{4}\*[\s]+)(.*)/gm, "\n	- $2");
@@ -188,7 +191,7 @@ function markdownRegexEdit(markdown2: string) {
     markdown2 = markdown2.replace(/([^\n]*-.*)[\n]{2,}([\s]*-)/gm, "$1\n$2");
     markdown2 = markdown2.replace(/([^\n]*-.*)[\n]{2,}([\s]*-)/gm, "$1\n$2");
 
-    //If tehre is sentence that ends with : and then list, remove the empty line
+    //If there is sentence that ends with : and then list, remove the empty line
     markdown2 = markdown2.replace(/(^.*:\n)\n(^[\s]*-)/gm, "$1$2");
 
     //Fix space before and after the picture
@@ -248,10 +251,10 @@ function markdownRegexEdit(markdown2: string) {
     //Replace \&gt; to >
     markdown2 = markdown2.replace(/\\&gt;/gm, ">");
 
-    //Replce \&lt; to <
+    //Replace \&lt; to <
     markdown2 = markdown2.replace(/\\&lt;/gm, "<");
 
-    //Repare tag -: ad < at start if missing
+    //Repar tag -: ad < at start if missing
     markdown2 = markdown2.replace(/(^\!--\s*deepmark-ignore-end\s*-->)/gm, "<!-- deepmark-ignore-end -->");
 
     //Replace \# with #
@@ -271,7 +274,7 @@ function markdownRegexEdit(markdown2: string) {
  *                   - result: The modified markdown string with ignored content placeholders.
  *                   - ignoredContent: An array of strings containing the ignored content.
  */
-function removeIgnoredContent(markdown: string) {
+function _removeIgnoredContent(markdown: string) {
     const startTag = /<!--\s*deepmark-ignore-start\s*-->/gm;
     const endTag = /<!--\s*deepmark-ignore-end\s*-->/gm;
     let result = '';
@@ -304,7 +307,7 @@ function removeIgnoredContent(markdown: string) {
  * @param {array} ignoredContent - An array of strings containing the ignored content.
  * @returns {string} The markdown string with the ignored content reinserted.
  */
-function insertIgnoredContent(translated: any, ignoredContent: string | any[]) {
+function _insertIgnoredContent(translated: any, ignoredContent: string | any[]) {
     const spaceForInsert = /<!--\s*deepmark-ignore-start\s*-->([\s\S]*?)<!--\s*deepmark-ignore-end\s*-->/g;
     let result = translated;
     let match;
