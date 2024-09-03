@@ -179,10 +179,16 @@ async function _translateLinkSubCategory(markdown: string, options: { mode: any;
  */
 function _markdownRegexEdit(markdown2: string) {
     //Replace the * with -
-    markdown2 = markdown2.replace(/(\n\*[\s]{3})(.*)/gm, "\n- $2");
-    markdown2 = markdown2.replace(/(\n[\s]{4}\*[\s]+)(.*)/gm, "\n	- $2");
-    markdown2 = markdown2.replace(/(\n[\s]{8}\*[\s]+)(.*)/gm, "\n		- $2");
-    markdown2 = markdown2.replace(/(\n[\s]{12}\*[\s]+)(.*)/gm, "\n			- $2");
+    markdown2 = markdown2.replace(/^\* (.*)\n\n(^[\s]*-)/gm, "- $1\n$2");
+    markdown2 = markdown2.replace(/(\n[\s]{1}\*[\s]+)(.*)/gm, "\n- $2");
+    markdown2 = markdown2.replace(/(\n[\s]{2}\*[\s]+)(.*)/gm, "\n  - $2");
+    markdown2 = markdown2.replace(/(\n[\s]{4}\*[\s]+)(.*)/gm, "\n    - $2");
+    markdown2 = markdown2.replace(/(\n[\s]{6}\*[\s]+)(.*)/gm, "\n      - $2");
+
+    //Fix spaces for # headers, ** headers and codes
+    markdown2 = markdown2.replace(/(^[\#]+ .*\n)([^\n])/gm, "$1\n$2");
+    markdown2 = markdown2.replace(/(^\*\*[^\*]+\*\*\n)([^\n]+)/gm, "$1\n$2");
+    markdown2 = markdown2.replace(/(^[\s]*\`\`\`\n)([^\n])/gm, "$1\n$2");
 
     //Fix redundant spaces after the -
     markdown2 = markdown2.replace(/(^[\s]*-)[\s]+/gm, "$1 ");
@@ -260,6 +266,10 @@ function _markdownRegexEdit(markdown2: string) {
     //Replace \# with #
     markdown2 = markdown2.replace(/^\\#/gm, "#");
     markdown2 = markdown2.replace(/^[\s]*-[\s*]\\#/gm, "- #");
+
+    //Fix redundant lines for lists
+    markdown2 = markdown2.replace(/(^[\s]*[^-]+[^:]$)(\n^[\s]*-)/gm, "$1\n$2");
+    markdown2 = markdown2.replace(/\n\n(^[\s]-)/gm, "\n$1");
 
     return markdown2;
 }

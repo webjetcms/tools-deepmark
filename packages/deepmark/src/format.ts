@@ -13,7 +13,8 @@ export async function format(markdown: string) {
 		printWidth: Infinity,
 		proseWrap: "never",
 		useTabs: true,
-		// embeddedLanguageFormatting: "off"
+  		endOfLine: "lf",
+    	embeddedLanguageFormatting: "off"
 	});
 
 	const mdast = getMdast(prettierData);
