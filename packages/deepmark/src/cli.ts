@@ -72,14 +72,14 @@ export function createCli() {
 					});
 
 					console.log("- formatting translated file");
-					
+
 					let markdown2: string = getMarkdown(_mdast);
 
 					markdown2 = await customizeTranslatedMarkdown(markdown2, options, config, targetLanguage, ignoredContent);
 
 					console.log("- writing file");
 					await fs.outputFile(
-						outputFilePath.replace(/\$langcode\$/, targetLanguage),
+						outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)),
 						markdown2,
 						{ encoding: "utf-8" }
 					);
@@ -107,7 +107,7 @@ export function createCli() {
 						config
 					});
 					// write translated file
-					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, targetLanguage), _json, {
+					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)), _json, {
 						encoding: 'utf-8'
 					});
 				}
@@ -130,7 +130,7 @@ export function createCli() {
 						config
 					});
 					// write translated file
-					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, targetLanguage), _json, {
+					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)), _json, {
 						encoding: 'utf-8'
 					});
 				}
@@ -138,7 +138,7 @@ export function createCli() {
 
 			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.others) {
 				for (const targetLanguage of config.outputLanguages) {
-					await fs.copy(sourceFilePath, outputFilePath.replace(/\$langcode\$/, targetLanguage));
+					await fs.copy(sourceFilePath, outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)));
 				}
 			}
 		});
@@ -154,4 +154,9 @@ async function getThenResolveConfig(path: string): Promise<Config> {
 
 async function getFile(path: string): Promise<string> {
 	return await fs.readFile(path, { encoding: 'utf-8' });
+}
+
+//WebJET CMS en-US converted to just en
+function shortLangCode(targetLanguage: string): string {
+	return targetLanguage.split('-')[0];
 }
