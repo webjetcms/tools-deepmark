@@ -9,6 +9,7 @@ import { extractJsonOrYamlStrings, extractMdastStrings } from './extract.js';
 import { format } from './format.js';
 import { replaceJsonOrYamlStrings, replaceMdastStrings } from './replace.js';
 import { translate } from './translate.js';
+import { beforeFormatMarkdownPrepare, logIgnoredContentInfo, getPreparedStrings, customizeTranslatedMarkdown, getConfigFilePath } from "./webjet-logic.js";
 
 export function createCli() {
 	const program = new Command();
@@ -43,31 +44,52 @@ export function createCli() {
 			// resolve source paths
 			const sourceFilePaths = await getSourceFilePaths(config);
 
+			console.log("***** Starting translation *****");
 			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.md) {
+				console.log("File : ./docs" + sourceFilePath.split("/docs")[1]);
+				console.log("- extracting file");
 				const markdown = await getFile(sourceFilePath);
 
-				// extract strings
-				const mdast = getMdast(await format(markdown));
-				const strings = extractMdastStrings({ mdast, config });
+				let { result, ignoredContent }: { result: string; ignoredContent: any } = beforeFormatMarkdownPrepare(markdown);
 
-				// translate strings
+				//Optional: log ignored content
+				//logIgnoredContentInfo(ignoredContent);
+
+				const formatted_markdown: string = await format(result);
+				const mdast: any = getMdast(formatted_markdown);
+
+				let strings: string[] = getPreparedStrings(mdast, config);
+
+				console.log("- translating file");
+
 				const translations = await translate({ strings, mode: options.mode, config });
 
 				for (const targetLanguage of config.outputLanguages) {
-					// replace strings
 					const _mdast = replaceMdastStrings({
 						mdast,
 						strings: translations[targetLanguage]!,
 						config
 					});
-					// write translated file
+
+					console.log("- formatting translated file");
+
+					let markdown2: string = getMarkdown(_mdast);
+
+					markdown2 = await customizeTranslatedMarkdown(markdown2, options, config, targetLanguage, ignoredContent);
+
+					console.log("- writing file");
 					await fs.outputFile(
-						outputFilePath.replace(/\$langcode\$/, targetLanguage),
-						getMarkdown(_mdast),
-						{ encoding: 'utf-8' }
+						outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)),
+						markdown2,
+						{ encoding: "utf-8" }
 					);
+					console.log("- file translation DONE");
+        			console.log("");
 				}
 			}
+
+			console.log("***** Translation DONE *****");
+    		console.log("");
 
 			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.json) {
 				const json = await getFile(sourceFilePath);
@@ -85,7 +107,7 @@ export function createCli() {
 						config
 					});
 					// write translated file
-					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, targetLanguage), _json, {
+					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)), _json, {
 						encoding: 'utf-8'
 					});
 				}
@@ -108,7 +130,7 @@ export function createCli() {
 						config
 					});
 					// write translated file
-					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, targetLanguage), _json, {
+					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)), _json, {
 						encoding: 'utf-8'
 					});
 				}
@@ -116,7 +138,7 @@ export function createCli() {
 
 			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.others) {
 				for (const targetLanguage of config.outputLanguages) {
-					await fs.copy(sourceFilePath, outputFilePath.replace(/\$langcode\$/, targetLanguage));
+					await fs.copy(sourceFilePath, outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)));
 				}
 			}
 		});
@@ -124,17 +146,17 @@ export function createCli() {
 	return program;
 }
 
-async function getThenResolveConfig(path?: string): Promise<Config> {
-	const configFilePath = path
-		? path.startsWith('/')
-			? path
-			: np.resolve(process.cwd(), path)
-		: np.resolve(process.cwd(), 'deepmark.config.mjs');
-
+async function getThenResolveConfig(path: string): Promise<Config> {
+	const configFilePath: string = await getConfigFilePath(path, true);
 	const userConfig: UserConfig = (await import(configFilePath)).default;
 	return resolveConfig(userConfig);
 }
 
 async function getFile(path: string): Promise<string> {
 	return await fs.readFile(path, { encoding: 'utf-8' });
+}
+
+//WebJET CMS en-US converted to just en
+function shortLangCode(targetLanguage: string): string {
+	return targetLanguage.split('-')[0];
 }

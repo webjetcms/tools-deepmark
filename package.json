@@ -6,7 +6,7 @@
 		"packages/*"
 	],
 	"scripts": {
-		"build": "pnpm build:dts && pnpm build:mehc && pnpm build:muhc && pnpm build:deepmark",
+		"build": "pnpm build:mehc && pnpm build:muhc && pnpm build:deepmark",
 		"build:dts": "tsc --build .",
 		"build:mehc": "pnpm -F micromark-extension-html-comment run build",
 		"build:muhc": "pnpm -F mdast-util-html-comment run build",
