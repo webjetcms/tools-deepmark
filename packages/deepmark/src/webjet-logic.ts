@@ -179,6 +179,7 @@ async function _translateLinkSubCategory(markdown: string, options: { mode: any;
  */
 function _markdownRegexEdit(markdown2: string) {
     //Replace the * with -
+    markdown2 = markdown2.replace(/^\* (.*)/gm, "- $1");
     markdown2 = markdown2.replace(/^\* (.*)\n\n(^[\s]*-)/gm, "- $1\n$2");
     markdown2 = markdown2.replace(/(\n[\s]{1}\*[\s]+)(.*)/gm, "\n- $2");
     markdown2 = markdown2.replace(/(\n[\s]{2}\*[\s]+)(.*)/gm, "\n  - $2");
@@ -270,6 +271,19 @@ function _markdownRegexEdit(markdown2: string) {
     //Fix redundant lines for lists
     markdown2 = markdown2.replace(/(^[\s]*[^-]+[^:]$)(\n^[\s]*-)/gm, "$1\n$2");
     markdown2 = markdown2.replace(/\n\n(^[\s]-)/gm, "\n$1");
+
+    //Fix redundant space in crossed out text (this space makes it not crossed out)
+    markdown2 = markdown2.replace(/\~\~\s*([^\~\n]+)\s*\~\~/gm, "~~$1~~");
+
+    //Fix redundant space in version number
+    markdown2 = markdown2.replace(/([0-9])\s*\.\s*([0/9])/gm, "$1.$2");
+
+    //Replace \&amp; back to &
+    markdown2 = markdown2.replace(/\\&amp;/gm, "&");
+
+    //Fix/remove redundant ")" that occurs in thext where we have `word` inside "()"
+    markdown2 = markdown2.replace(/\)\.\s*(\`[^\`\n]+\`[^\)\n\`]*)\)/gm, " $1)");
+    markdown2 = markdown2.replace(/\)\s*(\`[^\`]+\`)\)/gm, " $1)");
 
     return markdown2;
 }
