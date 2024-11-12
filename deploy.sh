@@ -1,5 +1,8 @@
 #!/bin/sh
 
+. ~/.nvm/nvm.sh
+nvm use
+
 npm run build:mehc
 npm run build:muhc
 npm run build:deepmark
