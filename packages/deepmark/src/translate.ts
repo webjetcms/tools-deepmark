@@ -3,6 +3,8 @@ import { Translator } from 'deepl-node';
 import np from 'node:path';
 import type { Config } from './config.js';
 import { Database } from './database.js';
+import pkg from '@google-cloud/translate';
+const { Translate } = pkg.v2;
 
 export async function translate({
 	strings,
@@ -15,14 +17,32 @@ export async function translate({
 	memorize?: boolean;
 	config: Config;
 }): Promise<{ [Property in TargetLanguageCode]?: string[] }> {
-	const db: Database = new Database(np.resolve(config.cwd, '.deepmark/db.sqlite'));
+	let dbPath: string;
+	if (config.translationEngine === 'google') {
+		dbPath = np.resolve(config.cwd, '.google/db.sqlite');
+	} else {
+		dbPath = np.resolve(config.cwd, '.deepmark/db.sqlite');
+	}
+
+	const db: Database = new Database(dbPath);
 	const translations: { [Property in TargetLanguageCode]?: string[] } = {};
 
 	if (mode !== 'offline') {
-		const DEEPL_AUTH_KEY = process.env.DEEPL_AUTH_KEY;
-		if (!DEEPL_AUTH_KEY) throw new Error('DEEPL_AUTH_KEY environment variable must be set');
-
-		const deepl = new Translator(DEEPL_AUTH_KEY);
+		let engine: any;
+		if (config.translationEngine === 'google'){
+			console.log("   -with google");
+			const GOOGLE_AUTH_KEY = process.env.GOOGLE_AUTH_KEY;
+			if (!GOOGLE_AUTH_KEY)
+				throw new Error("GOOGLE_AUTH_KEY environment variable must be set");
+			engine = new Translate({key : GOOGLE_AUTH_KEY} );
+		}
+		else {
+			console.log("   -with deepl");
+			const DEEPL_AUTH_KEY = process.env.DEEPL_AUTH_KEY;
+			if (!DEEPL_AUTH_KEY)
+				throw new Error("DEEPL_AUTH_KEY environment variable must be set");
+			engine = new Translator(DEEPL_AUTH_KEY);
+		}
 		const queue: [index: number, string: string][] = [];
 		const hybrid = mode === 'hybrid';
 
@@ -45,15 +65,15 @@ export async function translate({
 				queue.push([index, string]);
 				_translations.push('');
 
-				//Translate strings using DeepL in batches of 10 
+				//Translate strings using DeepL in batches of 10
 				if(queue.length > 10) {
-					await deeplTrasnlate(queue, deepl, config, targetLanguage, _translations, db, memorize);
+					await translateImpl(queue, engine, config, targetLanguage, _translations, db, memorize);
 				}
 			}
 
 			//Translate left over string from queue using DeepL
 			if (queue.length > 0) {
-				await deeplTrasnlate(queue, deepl, config, targetLanguage, _translations, db, memorize);
+				await translateImpl(queue, engine, config, targetLanguage, _translations, db, memorize);
 			}
 
 			translations[targetLanguage] = _translations;
@@ -83,37 +103,44 @@ export async function translate({
 	return translations;
 }
 
-async function deeplTrasnlate(
+async function translateImpl(
 	queue: [number, string][],
-	deepl: Translator,
+	engine: any,
 	config: Config,
 	targetLanguage: TargetLanguageCode,
 	_translations: string[],
 	db: Database,
-	memorize: boolean
+	memorize: boolean | undefined
 ): Promise<void> {
 	const indexes = queue.map(([index2]) => index2);
 	const _strings = queue.map(([__, string2]) => string2);
 
-	const results = await deepl.translateText(
-		_strings,
-		config.sourceLanguage,
-		targetLanguage,
-		{
+	let results;
+	if (config.translationEngine === 'google') {
+		const [translations] = await engine.translate(_strings, {
+			from: config.sourceLanguage,
+			to: targetLanguage,
+		});
+		results = Array.isArray(translations) ? translations : [translations];
+  	}
+	else {
+		results = await engine.translateText(
+			_strings,
+			config.sourceLanguage,
+			targetLanguage,{
 			tagHandling: "html",
 			splitSentences: "nonewlines"
-		}
-	);
+		});
+	}
 
 	queue.reverse();
 	for (let j = 0; j < indexes.length; j++) {
 		const index2 = indexes[j];
-		const translation = results[j].text;
+		const translation = config.translationEngine === 'google' ? results[j] : results[j].text;
 		const string2 = _strings[j];
 
 		if (memorize)
 			db.setTranslation({ source: string2, language: targetLanguage, translation });
-		
 		_translations[index2] = translation;
 		queue.pop();
 	}
