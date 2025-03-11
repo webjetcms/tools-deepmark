@@ -3,18 +3,21 @@ import { getMarkdown, getMdast, mdNodeIs } from './ast/mdast.js';
 import { unwalk } from './ast/unwalk.js';
 
 export async function format(markdown: string) {
+	
 	/**
 	 * `printWidth` is set to Infinity and `proseWrap` is set to never
 	 * to avoid unnecessary linebreaks that break translation result
 	 */
-	const mdast = getMdast(
-		prettier.format(markdown, {
-			parser: 'mdx',
-			printWidth: Infinity,
-			proseWrap: 'never',
-			useTabs: true
-		})
-	);
+	const prettierData = await prettier.format(markdown, {
+		parser: "mdx",
+		printWidth: Infinity,
+		proseWrap: "never",
+		useTabs: true,
+  		endOfLine: "lf",
+    	embeddedLanguageFormatting: "off"
+	});
+
+	const mdast = getMdast(prettierData);
 
 	/**
 	 * remove empty surface flow expression nodes that sometimes
