@@ -19,7 +19,7 @@ export async function translate({
 }): Promise<{ [Property in TargetLanguageCode]?: string[] }> {
 	let dbPath: string;
 	if (config.translationEngine === 'google') {
-		dbPath = np.resolve(config.cwd, '.google/db.sqlite');
+		dbPath = np.resolve(config.cwd, '.deepmark/google.sqlite');
 	} else {
 		dbPath = np.resolve(config.cwd, '.deepmark/db.sqlite');
 	}

@@ -1,5 +1,9 @@
 # Changelog
 
+# 0.3.1
+
+Change location for google translation database to `.deepmark/google.sqlite`.
+
 # 0.3.0
 
 Add support for Google Translate as engine configured by `translationEngine: "google"` in `deepmark.config.js`.
