@@ -35,7 +35,7 @@ export async function translate({
 			if (!GOOGLE_AUTH_KEY)
 				throw new Error("GOOGLE_AUTH_KEY environment variable must be set");
 			engine = new Translate({key : GOOGLE_AUTH_KEY} );
-		} 
+		}
 		else {
 			console.log("   -with deepl");
 			const DEEPL_AUTH_KEY = process.env.DEEPL_AUTH_KEY;
@@ -65,15 +65,15 @@ export async function translate({
 				queue.push([index, string]);
 				_translations.push('');
 
-				//Translate strings using DeepL in batches of 10 
+				//Translate strings using DeepL in batches of 10
 				if(queue.length > 10) {
-					await deeplTrasnlate(queue, engine, config, targetLanguage, _translations, db, memorize);
+					await translateImpl(queue, engine, config, targetLanguage, _translations, db, memorize);
 				}
 			}
 
 			//Translate left over string from queue using DeepL
 			if (queue.length > 0) {
-				await deeplTrasnlate(queue, engine, config, targetLanguage, _translations, db, memorize);
+				await translateImpl(queue, engine, config, targetLanguage, _translations, db, memorize);
 			}
 
 			translations[targetLanguage] = _translations;
@@ -103,7 +103,7 @@ export async function translate({
 	return translations;
 }
 
-async function deeplTrasnlate(
+async function translateImpl(
 	queue: [number, string][],
 	engine: any,
 	config: Config,
@@ -123,7 +123,7 @@ async function deeplTrasnlate(
 		});
 		results = Array.isArray(translations) ? translations : [translations];
   	}
-	else { 
+	else {
 		results = await engine.translateText(
 			_strings,
 			config.sourceLanguage,
