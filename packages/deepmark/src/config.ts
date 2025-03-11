@@ -476,11 +476,11 @@ export async function getSourceFilePaths(
 				continue;
 			}
 
-			//Exclude pictures
-			if (path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg")) { 
+			//Exclude pictures, PDF and docx files
+			if (path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".gif") || path.endsWith(".pdf") || path.endsWith(".docx")) {
 				continue;
 			}
-			
+
 			paths.others.push(filePaths);
 		}
 	}
