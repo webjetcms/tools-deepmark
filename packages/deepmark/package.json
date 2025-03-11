@@ -35,7 +35,8 @@
 		"micromark-extension-html-comment": "^0.0.1",
 		"micromark-extension-mdxjs": "^3.0.0",
 		"prettier": "^3.3.3",
-		"yaml": "^2.6.1"
+		"yaml": "^2.6.1",
+		"@google-cloud/translate": "^8.5.1"
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "^7.6.12",
