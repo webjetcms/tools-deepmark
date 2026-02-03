@@ -1,5 +1,9 @@
 # Changelog
 
+# 0.3.2
+
+Replace `mdast` parse of MD files with custom parser to enhance quality of translated texts.
+
 # 0.3.1
 
 Change location for google translation database to `.deepmark/google.sqlite`.
