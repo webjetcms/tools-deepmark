@@ -1,4 +1,3 @@
-import { extractMdastStrings } from "./extract.js";
 import { translate } from "./translate.js";
 import np from "node:path";
 
@@ -45,23 +44,6 @@ export function logIgnoredContentInfo(ignoredContent: any[]) {
         console.log('\x1b[43m Skipping the following paragraphs: \x1b[0m');
         ignoredContent.forEach((content: string) => console.log("\x1b[45m" + content + " \x1b[0m"));
     }
-}
-
-/**
- * Uses the extractMdastStrings function from the extract.js module to extract strings, than replaces the newlines with <br> tags.
- * 
- * @param {Object} mdast - object representing the Markdown Abstract Syntax Tree (MDAST).
- * @param {Object} config - configuration objec
- * @returns - strings array
- */
-export function getPreparedStrings(mdast: any, config: any) {
-    let extractedMdastStrings = extractMdastStrings({ mdast, config })
-    let strings: string | any[] = [];
-    extractedMdastStrings.forEach((string) => {
-      strings[strings.length] = string.replace(/(|)\n/gi, '$1<br>');
-    });
-
-    return strings;
 }
 
 /**

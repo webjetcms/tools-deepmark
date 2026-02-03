@@ -1,15 +1,13 @@
-import { Command, Option } from 'commander';
+import { Command } from 'commander';
 import fs from 'fs-extra';
-import np from 'node:path';
-import nurl from 'node:url';
-import { getMarkdown, getMdast } from './ast/mdast.js';
 import type { Config, UserConfig } from './config.js';
 import { resolveConfig, getSourceFilePaths } from './config.js';
-import { extractJsonOrYamlStrings, extractMdastStrings } from './extract.js';
+import { extractJsonOrYamlStrings } from './extract.js';
 import { format } from './format.js';
-import { replaceJsonOrYamlStrings, replaceMdastStrings } from './replace.js';
+import { replaceJsonOrYamlStrings } from './replace.js';
 import { translate } from './translate.js';
-import { beforeFormatMarkdownPrepare, logIgnoredContentInfo, getPreparedStrings, customizeTranslatedMarkdown, getConfigFilePath } from "./webjet-logic.js";
+import { beforeFormatMarkdownPrepare, logIgnoredContentInfo, customizeTranslatedMarkdown, getConfigFilePath } from "./webjet-logic.js";
+import { getPreparedBatch, getTranslatedMarkdown } from "./custom-parser.js";
 
 export function createCli() {
 	const program = new Command();
@@ -56,26 +54,18 @@ export function createCli() {
 				//logIgnoredContentInfo(ignoredContent);
 
 				const formatted_markdown: string = await format(result);
-				const mdast: any = getMdast(formatted_markdown);
-
-				let strings: string[] = getPreparedStrings(mdast, config);
 
 				console.log("- translating file");
 
-				const translations = await translate({ strings, mode: options.mode, config });
+				const preparedBatch = getPreparedBatch(formatted_markdown);
+
+      			//console.log("Prepared batch:", preparedBatch);
+
+				const translatedArr = await translate({ strings: preparedBatch.toTranslate, mode: options.mode, config });
 
 				for (const targetLanguage of config.outputLanguages) {
-					const _mdast = replaceMdastStrings({
-						mdast,
-						strings: translations[targetLanguage]!,
-						config
-					});
-
-					console.log("- formatting translated file");
-
-					let markdown2: string = getMarkdown(_mdast);
-
-					markdown2 = await customizeTranslatedMarkdown(markdown2, options, config, targetLanguage, ignoredContent);
+					let markdown2 = getTranslatedMarkdown(preparedBatch.parsed, preparedBatch.chunkIndexes, translatedArr[targetLanguage]);
+        			markdown2 = await customizeTranslatedMarkdown(markdown2, options, config, targetLanguage, ignoredContent);
 
 					console.log("- writing file");
 					await fs.outputFile(
