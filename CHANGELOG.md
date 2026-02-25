@@ -1,8 +1,12 @@
 # Changelog
 
+# 0.3.3
+
+Improve translation quality by removing `prettier` from workflow and adding other changes.
+
 # 0.3.2
 
-Replace `mdast` parse of MD files with custom parser to enhance quality of translated texts.
+Replacing `mdast` parser with custom parser `custom-parser.ts`.
 
 # 0.3.1
 
