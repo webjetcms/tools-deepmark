@@ -1,5 +1,13 @@
 # Changelog
 
+# 0.3.3
+
+Improve translation quality by removing `prettier` from workflow and adding other changes.
+
+# 0.3.2
+
+Replacing `mdast` parser with custom parser `custom-parser.ts`.
+
 # 0.3.1
 
 Change location for google translation database to `.deepmark/google.sqlite`.
