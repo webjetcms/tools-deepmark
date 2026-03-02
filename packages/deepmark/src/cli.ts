@@ -53,11 +53,11 @@ export function createCli() {
 				//Optional: log ignored content
 				//logIgnoredContentInfo(ignoredContent);
 
-				const formatted_markdown: string = await format(result);
-
 				console.log("- translating file");
-
-				const preparedBatch = getPreparedBatch(formatted_markdown);
+				
+				// !! - try getPreparedBatch WITHOUT formating the markdown (it was killing spacing between link, list etc)
+				//const formatted_markdown: string = await format(result);
+				const preparedBatch = getPreparedBatch(result);
 
       			//console.log("Prepared batch:", preparedBatch);
 

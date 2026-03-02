@@ -1,5 +1,9 @@
 # Changelog
 
+# 0.3.4
+
+Skip **formatting** before content parsing to improve translation quality (it was causing issues with certain markdown structures).
+
 # 0.3.3
 
 Improve translation quality by removing `prettier` from workflow and adding other changes.

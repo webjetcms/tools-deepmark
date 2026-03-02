@@ -179,12 +179,12 @@ function _markdownRegexEdit(markdown2: string) {
     markdown2 = markdown2.replace(/(^\*\*[^\*]+\*\*\n)([^\n]+)/gm, "$1\n$2");
     markdown2 = markdown2.replace(/(^[\s]*\`\`\`\n)([^\n])/gm, "$1\n$2");
 
-    //Fix redundant spaces after the -
-    markdown2 = markdown2.replace(/(^[\s]*-)[\s]+/gm, "$1 ");
+    // Fix redundant spaces after the - commented for now
+    // markdown2 = markdown2.replace(/(^[\s]*-)[\s]+/gm, "$1 ");
 
-    //Remove redundant line in lists (there MUST be regex 2 times) 
-    markdown2 = markdown2.replace(/([^\n]*-.*)[\n]{2,}([\s]*-)/gm, "$1\n$2");
-    markdown2 = markdown2.replace(/([^\n]*-.*)[\n]{2,}([\s]*-)/gm, "$1\n$2");
+    // Remove redundant line in lists (there MUST be regex 2 times) - commented for now
+    // markdown2 = markdown2.replace(/([^\n]*-.*)[\n]{2,}([\s]*-)/gm, "$1\n$2");
+    // markdown2 = markdown2.replace(/([^\n]*-.*)[\n]{2,}([\s]*-)/gm, "$1\n$2");
 
     //If there is sentence that ends with : and then list, ensure exactly one empty line between them
     markdown2 = markdown2.replace(/(^.*:\n)(\n*)^[\s]*(-)/gm, (match, p1, p2, p3) => {

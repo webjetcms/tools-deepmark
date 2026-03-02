@@ -156,6 +156,10 @@ export function getMarkdown(mdast: MdRoot): string {
 		       if (mdNodeIsJsxElement(parent)) {
 			       return 0;
 		       }
+		       if (mdNodeIs(parent, 'list') || mdNodeIs(parent, 'listItem')) {
+					// Do NOT put redundant empty line between list options
+			       return 0;
+		       }
 		       return 1;
 	       }
 	    ],
