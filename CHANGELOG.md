@@ -1,33 +1,33 @@
 # Changelog
 
-# 0.3.4
+## 0.3.4
 
 Skip **formatting** before content parsing to improve translation quality (it was causing issues with certain markdown structures).
 
-# 0.3.3
+## 0.3.3
 
 Improve translation quality by removing `prettier` from workflow and adding other changes.
 
-# 0.3.2
+## 0.3.2
 
 Replacing `mdast` parser with custom parser `custom-parser.ts`.
 
-# 0.3.1
+## 0.3.1
 
 Change location for google translation database to `.deepmark/google.sqlite`.
 
-# 0.3.0
+## 0.3.0
 
 Add support for Google Translate as engine configured by `translationEngine: "google"` in `deepmark.config.js`.
 
-# 0.2.1
+## 0.2.1
 
 Skip also `pdf` and `docx` files (config.ts).
 
-# 0.2.0
+## 0.2.0
 
 Update node to v22, update dependencies.
 
 ## 0.1.9
 
-Build with bode 16
+Build with node 16
