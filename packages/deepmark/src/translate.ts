@@ -43,10 +43,10 @@ export async function translate({
 				throw new Error("DEEPL_AUTH_KEY environment variable must be set");
 			engine = new Translator(DEEPL_AUTH_KEY);
 		}
-		const queue: [index: number, string: string][] = [];
 		const hybrid = mode === 'hybrid';
 
 		for (const targetLanguage of config.outputLanguages) {
+			const queue: [index: number, string: string][] = [];
 			const _translations: string[] = [];
 
 			for (const [index, string] of strings.entries()) {
@@ -115,33 +115,42 @@ async function translateImpl(
 	const indexes = queue.map(([index2]) => index2);
 	const _strings = queue.map(([__, string2]) => string2);
 
-	let results;
+	// Deduplicate strings to reduce API calls for repeated content
+	const uniqueMap = new Map<string, number>();
+	const uniqueStrings: string[] = [];
+	for (const s of _strings) {
+		if (!uniqueMap.has(s)) {
+			uniqueMap.set(s, uniqueStrings.length);
+			uniqueStrings.push(s);
+		}
+	}
+
+	let uniqueResults: string[];
 	if (config.translationEngine === 'google') {
-		const [translations] = await engine.translate(_strings, {
+		const [translations] = await engine.translate(uniqueStrings, {
 			from: config.sourceLanguage,
 			to: targetLanguage,
 		});
-		results = Array.isArray(translations) ? translations : [translations];
-  	}
-	else {
-		results = await engine.translateText(
-			_strings,
+		uniqueResults = Array.isArray(translations) ? translations : [translations];
+	} else {
+		const raw = await engine.translateText(
+			uniqueStrings,
 			config.sourceLanguage,
-			targetLanguage,{
+			targetLanguage, {
 			tagHandling: "html",
 			splitSentences: "nonewlines"
 		});
+		uniqueResults = raw.map((r: any) => r.text);
 	}
 
-	queue.reverse();
 	for (let j = 0; j < indexes.length; j++) {
 		const index2 = indexes[j];
-		const translation = config.translationEngine === 'google' ? results[j] : results[j].text;
 		const string2 = _strings[j];
+		const translation = uniqueResults[uniqueMap.get(string2)!];
 
 		if (memorize)
 			db.setTranslation({ source: string2, language: targetLanguage, translation });
 		_translations[index2] = translation;
-		queue.pop();
 	}
+	queue.length = 0;
 }

@@ -131,7 +131,7 @@ async function _translateLinkSubCategory(markdown: string, options: { mode: any;
         subCategoryString = subCategoryString.replace(/---/g, ' - ');
         subCategoryString = subCategoryString.replace(/([^\s]{1})-([^\s]{1})/g, '$1 $2');
         subCategoryString = subCategoryString.replace(/([^\s]{1})-([^\s]{1})/g, '$1 $2');
-        strings.push( "@@HEADING_MARKER@@" + subCategoryString.charAt(0).toUpperCase() + subCategoryString.slice(1) );
+        strings.push( subCategoryString.charAt(0).toUpperCase() + subCategoryString.slice(1) );
       }
     });
   
@@ -142,11 +142,11 @@ async function _translateLinkSubCategory(markdown: string, options: { mode: any;
     if(targetLanguageTranslations !== undefined && targetLanguageTranslations !== null) {
         //Replace subcategories in the markdown with the translated ones
         for(let i = 0; i < strings.length; i++) {
-            let originalForm = strings[i].replaceAll("@@HEADING_MARKER@@", "#");
+            let originalForm = strings[i];
             originalForm = originalForm.toLowerCase();
             originalForm = originalForm.replaceAll(" ", "-") + ")";
 
-            let translatedForm = targetLanguageTranslations[i].replaceAll("@@HEADING_MARKER@@", "#");
+            let translatedForm = targetLanguageTranslations[i];
             translatedForm = translatedForm.toLowerCase();
             translatedForm = translatedForm.replaceAll(" ", "-") + ")";
 
@@ -186,12 +186,9 @@ function _markdownRegexEdit(markdown2: string) {
     // markdown2 = markdown2.replace(/([^\n]*-.*)[\n]{2,}([\s]*-)/gm, "$1\n$2");
     // markdown2 = markdown2.replace(/([^\n]*-.*)[\n]{2,}([\s]*-)/gm, "$1\n$2");
 
-    //If there is sentence that ends with : and then list, ensure exactly one empty line between them
-    markdown2 = markdown2.replace(/(^.*:\n)(\n*)^[\s]*(-)/gm, (match, p1, p2, p3) => {
-        // Always insert exactly one empty line between the colon and the list item
-        return p1 + '\n-';
-    });
-
+    //If there is sentence that ends with : and then list, ensure exactly one empty line between them BUT exclude lines that have "-" at start it would break list
+    markdown2 = markdown2.replace(/(^.*:\n)(\n+)(?=[ \t]*-)/gm,(match, p1) => p1 + '\n');
+    
     //Fix space before and after the picture
     markdown2 = markdown2.replace(/([^\n])\n(^!\[\]\([^()]+\))/gm, "$1\n\n$2");
     markdown2 = markdown2.replace(/(^!\[\]\([^()]+\))[\n]*([^\n])/gm, "$1\n\n$2");
@@ -219,9 +216,6 @@ function _markdownRegexEdit(markdown2: string) {
     markdown2 = markdown2.replace(/([^\|\n])[\n]*(^\|.*\|\n)/gm, '$1\n\n$2');
     markdown2 = markdown2.replace(/(^\|.*\|)[\n]*(^[^\|\n])/gm, '$1\n\n$2');
 
-    //Fix spaces
-    markdown2 = markdown2.replace(/^ *([0-9]+.)[\s]*/gm, "$1 ");
-
     //Fix space after bold text
     markdown2 = markdown2.replace(/ (\*\*[^\*]+\*\*)([a-zA-Z])/gm, " $1 $2");
 
@@ -236,9 +230,6 @@ function _markdownRegexEdit(markdown2: string) {
 
     //Fix redundant added . INSIDE strong text
     markdown2 = markdown2.replace(/( \*\*[^\*\n]+)(\.)(\*\*\.)/gm, "$1$3");
-
-    //Replace wrong generated \[ to [
-    markdown2 = markdown2.replace(/\\\[/gm, "[");
 
     //Fix redundant space in TABLE -> (CAN happen in case of table row with text NOT ended with symbol | )
     markdown2 = markdown2.replace(/(^\|.*)\n\n(^\|)/gm, "$1\n$2");

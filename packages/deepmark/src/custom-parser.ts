@@ -30,7 +30,9 @@ const REGEX_PATTERNS = {
   taskList: /^([-*+])\s+\[[ xX]\]\s*$/,
   blockquote: /^>\s*$/,
   headingOnly: /^#{1,6}\s*$/,
-  purePunctuation: /^[\p{P}\p{S}]+$/u
+  purePunctuation: /^[\p{P}\p{S}]+$/u,
+  iframeStart: /^\s*<iframe\b/i,
+  iframeEnd: /<\/iframe>/i
 };
 
 /**
@@ -39,7 +41,8 @@ const REGEX_PATTERNS = {
  */
 interface Chunk {
   type: ChunkType | string;
-  text: string;
+  text: string;                                 // raw text for non-translatable chunks
+  payload?: TextLinePayload | TablePayload;     // structured data for translatable chunks
   translatable: boolean;
 }
 
@@ -57,8 +60,8 @@ interface Placeholder {
  * Contains chunks and a decoder function to restore placeholders.
  */
 interface ParsedResult {
-  chunks: Chunk[];                                     // All parsed chunks in order
-  decodeTranslatableChunk: (chunkText: string) => string; // Restores placeholders in translated text
+  chunks: Chunk[];                                 // All parsed chunks in order
+  decodeTranslatableChunk: (chunk: Chunk) => string; // Restores placeholders in translated text
 }
 
 /**
@@ -93,7 +96,9 @@ interface PreparedBatch {
  */
 interface TextLinePayload {
   text: string;
+  leadingSpacePlaceholders: Placeholder[];
   headingPlaceholders: Placeholder[];
+  htmlCodeTagPlaceholders: Placeholder[];
   urlPlaceholders: Placeholder[];
   codePlaceholders: Placeholder[];
 }
@@ -134,8 +139,8 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
   let frontmatterDone: boolean = false;
 
   /** Helper to add a chunk to the chunks array */
-  const push = (type: string, text: string, translatable: boolean): void => {
-    chunks.push({ type, text, translatable });
+  const push = (type: string, text: string, translatable: boolean, payload?: TextLinePayload | TablePayload): void => {
+    chunks.push({ type, text, payload, translatable });
   };
 
   /** Detects the start of a code fence (``` or ~~~) and returns the fence marker */
@@ -164,7 +169,7 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
   const looksLikeTableRow = (line: string): boolean => {
     if (!line.includes("|")) return false;
     const t = line.trim();
-    const pipeCount = (t.match(/\|/g) || []).length;
+    const pipeCount = t.split("|").length - 1;
     return t.startsWith("|") || t.endsWith("|") || pipeCount >= 2;
   };
 
@@ -173,9 +178,9 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
    * A valid table requires: header row, separator row (|---|---|), and at least one data row.
    * 
    * @param startIndex - Line index to start checking for a table
-   * @returns Table block text and next line index, or null if not a valid table
+   * @returns Next line index after the table, or null if not a valid table
    */
-  const consumeTableBlock = (startIndex: number): { block: string; nextIndex: number } | null => {
+  const consumeTableBlock = (startIndex: number): { nextIndex: number } | null => {
     let j: number = startIndex;
     if (j + 1 >= lines.length) return null;
     const header = lines[j];
@@ -191,18 +196,17 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
       j++;
     }
 
-    return { block: lines.slice(startIndex, j).join("\n"), nextIndex: j };
+    return { nextIndex: j };
   };
 
   /**
    * Protects table cell content with placeholders so the table structure isn't translated.
    * Only the cell content is marked for translation, not the pipes and separators.
    * 
-   * @param tableBlock - The complete table block as a string
+   * @param tableLines - The table block lines
    * @returns Protected table structure with cell placeholders
    */
-  const protectTableCells = (tableBlock: string): TableProtectedResult => {
-    const tableLines: string[] = tableBlock.split("\n");
+  const protectTableCells = (tableLines: string[]): TableProtectedResult => {
     const placeholders: Placeholder[] = [];
     let cellIdx: number = 0;
 
@@ -237,7 +241,7 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
     });
 
     return {
-      text: processedLines.join("\n"),
+      text: processedLines.join("\n"),  // join here since Table still stores as string in payload
       placeholders
     };
   };
@@ -251,58 +255,116 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
    */
   const protectInlineCode = (line: string): ProtectedResult => {
     const placeholders: Placeholder[] = [];
-    let out: string = "";
-    let idx: number = 0;
-    let k: number = 0;
+    const parts: string[] = [];
+    let segStart = 0;
+    let idx = 0;
+    let k = 0;
 
     while (k < line.length) {
-      if (line[k] === "`") {
-        // Count consecutive backticks to handle ``code`` syntax
-        let tickCount: number = 1;
-        while (k + tickCount < line.length && line[k + tickCount] === "`") tickCount++;
+      if (line[k] !== "`") { k++; continue; }
 
-        const start: number = k;
-        k += tickCount;
+      // Count consecutive backticks to handle ``code`` syntax
+      let tickCount = 1;
+      while (k + tickCount < line.length && line[k + tickCount] === "`") tickCount++;
 
-        const close: number = line.indexOf("`".repeat(tickCount), k);
-        if (close === -1) {
-          out += line.slice(start, start + tickCount);
-          continue;
-        }
+      const start = k;
+      k += tickCount;
 
-        const codeSpan: string = line.slice(start, close + tickCount);
-        const token: string = `@@CODE_${idx}@@`;
-        placeholders.push({ token, value: codeSpan });
-        out += token;
-        idx++;
-        k = close + tickCount;
-      } else {
-        out += line[k];
-        k++;
+      const close = line.indexOf("`".repeat(tickCount), k);
+      if (close === -1) {
+        // No closing backtick — opening backticks become plain text (included in next segment)
+        continue;
       }
+
+      parts.push(line.slice(segStart, start));
+      const token = `@@CODE_${idx}@@`;
+      placeholders.push({ token, value: line.slice(start, close + tickCount) });
+      parts.push(token);
+      idx++;
+      k = close + tickCount;
+      segStart = k;
     }
 
-    return { text: out, placeholders };
+    if (parts.length === 0) return { text: line, placeholders: [] };
+    if (segStart < line.length) parts.push(line.slice(segStart));
+    return { text: parts.join(""), placeholders };
   };
 
   /**
-   * Protects URLs in Markdown links from translation.
-   * Matches both regular links [text](url) and images ![alt](url).
-   * 
+   * Protects Markdown link syntax from translation using XML tag pairs.
+   * Wraps [label](url) as <lnkN>label</lnkN> so that:
+   *   - The label text IS translated (it is visible text between the tags)
+   *   - The opening [ and closing ](url) are opaque placeholders stored in the tag tokens
+   *   - Both DeepL (tagHandling:'html') and Google (default format:'html') treat
+   *     unknown XML-like tags as non-translatable markup and preserve them exactly.
+   * This avoids the two failure modes of @@token@@ style placeholders:
+   *   1. Google moving a bracket-like opening token to after the phrase
+   *   2. Google dropping a closing token that immediately follows a word character
+   * Works for both regular links [text](url) and images ![alt](url).
+   *
    * @param line - Text line to process
-   * @returns Line with URLs replaced by @@URL_N@@ placeholders
+   * @returns Line with link syntax replaced by <lnkN>label</lnkN> pairs
    */
   const protectLinkUrls = (line: string): ProtectedResult => {
     const placeholders: Placeholder[] = [];
     let idx: number = 0;
 
     const text: string = line.replace(REGEX_PATTERNS.markdownLink, (_m: string, label: string, url: string, titlePart?: string): string => {
-      const token: string = `@@URL_${idx}@@`;
-      placeholders.push({ token, value: url });
+      const openTag  = `<lnk${idx}>`;
+      const closeTag = `</lnk${idx}>`;
+
+      const isImage = label.startsWith('!');
+      const openBracket = isImage ? '![' : '[';
+      const innerLabel = label.slice(openBracket.length, -1); // strip '[' (or '![') and closing ']'
+
+      placeholders.push({ token: openTag,  value: openBracket });
+      placeholders.push({ token: closeTag, value: `](${url}${titlePart ?? ''})` });
       idx++;
-      return `${label}(${token}${titlePart ?? ""})`;
+
+      return `${openTag}${innerLabel}${closeTag}`;
     });
 
+    return { text, placeholders };
+  };
+
+  /**
+   * Protects leading spaces from translation by replacing them with @@LEADING_SPACE@@ tokens.
+   * Translation services often strip leading whitespace, so each space is replaced with a token
+   * that survives the translation round-trip.
+   *
+   * @param line - Text line to process
+   * @returns Line with leading spaces replaced by @@LEADING_SPACE@@ tokens
+   */
+  const protectLeadingSpaces = (line: string): ProtectedResult => {
+    const match = line.match(/^ +/);
+    if (!match) return { text: line, placeholders: [] };
+
+    const spaceCount = match[0].length;
+    const token = "@@LEADING_SPACE@@";
+    return {
+      text: token.repeat(spaceCount) + line.slice(spaceCount),
+      placeholders: [{ token, value: " " }]
+    };
+  };
+
+  /**
+   * Protects HTML <code> and </code> tags from interfering with translation.
+   * DeepL with tagHandling:"html" treats <code> content as non-translatable by default.
+   * By replacing the tags with placeholders, the tag boundaries are preserved but the
+   * content between them becomes regular translatable text.
+   *
+   * @param line - Text line to process
+   * @returns Line with <code>/<\/code> tags replaced by @@HTML_CODE_TAG_N@@ placeholders
+   */
+  const protectHtmlCodeTags = (line: string): ProtectedResult => {
+    const placeholders: Placeholder[] = [];
+    let idx = 0;
+    const text = line.replace(/<\/?code>/gi, (match) => {
+      const token = `@@HTML_CODE_TAG_${idx++}@@`;
+      placeholders.push({ token, value: match });
+      return token;
+    });
+    if (placeholders.length === 0) return { text: line, placeholders: [] };
     return { text, placeholders };
   };
 
@@ -332,6 +394,7 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
    * @returns Text with all placeholders replaced by original values
    */
   const restorePlaceholders = (text: string, placeholders: Placeholder[]): string => {
+    if (placeholders.length === 0) return text;
     let out = text;
     for (const p of placeholders) out = out.replaceAll(p.token, p.value);
     return out;
@@ -359,6 +422,26 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
     }
     frontmatterDone = true;
 
+    // Iframe block (never translated)
+    if (REGEX_PATTERNS.iframeStart.test(line)) {
+      const iframeLines: string[] = [line];
+      if (!REGEX_PATTERNS.iframeEnd.test(line)) {
+        i++;
+        while (i < lines.length) {
+          iframeLines.push(lines[i]);
+          if (REGEX_PATTERNS.iframeEnd.test(lines[i])) {
+            i++;
+            break;
+          }
+          i++;
+        }
+      } else {
+        i++;
+      }
+      push('iframe', iframeLines.join("\n"), false);
+      continue;
+    }
+
     // Fenced code block
     const fence = isFenceStart(line);
     if (!inFence && fence) {
@@ -366,12 +449,13 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
       fenceMarker = fence.marker;
 
       const codeLines: string[] = [line];
+      const fenceCloseRe = new RegExp(`^\\s*${fenceMarker}\\s*$`);
       i++;
 
       while (i < lines.length) {
         const l: string = lines[i];
         codeLines.push(l);
-        if (new RegExp(`^\\s*${fenceMarker}\\s*$`).test(l)) {
+        if (fenceCloseRe.test(l)) {
           i++;
           break;
         }
@@ -387,33 +471,37 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
     // Table block (protect structure, translate cells)
     const tableBlock = consumeTableBlock(i);
     if (tableBlock) {
-      const protectedX = protectTableCells(tableBlock.block);
+      const tableLines = lines.slice(i, tableBlock.nextIndex);
+      const protectedX = protectTableCells(tableLines);
       push(
         ChunkType.TABLE,
-        JSON.stringify({
-          text: protectedX.text,
-          tablePlaceholders: protectedX.placeholders
-        } as TablePayload),
-        true
+        '',
+        true,
+        { text: protectedX.text, tablePlaceholders: protectedX.placeholders } as TablePayload
       );
       i = tableBlock.nextIndex;
       continue;
     }
 
-    // Normal line, translatable but with heading markers, inline-code + URL placeholders
-    const headingProtected = protectHeadingMarkers(line);
-    const urlProtected = protectLinkUrls(headingProtected.text);
+    // Normal line, translatable but with leading spaces, heading markers, inline-code + URL placeholders
+    const spacesProtected = protectLeadingSpaces(line);
+    const headingProtected = protectHeadingMarkers(spacesProtected.text);
+    const htmlCodeTagsProtected = protectHtmlCodeTags(headingProtected.text);
+    const urlProtected = protectLinkUrls(htmlCodeTagsProtected.text);
     const codeProtected = protectInlineCode(urlProtected.text);
 
     push(
       ChunkType.TEXT_LINE,
-      JSON.stringify({
+      '',
+      true,
+      {
         text: codeProtected.text,
+        leadingSpacePlaceholders: spacesProtected.placeholders,
         headingPlaceholders: headingProtected.placeholders,
+        htmlCodeTagPlaceholders: htmlCodeTagsProtected.placeholders,
         urlPlaceholders: urlProtected.placeholders,
         codePlaceholders: codeProtected.placeholders
-      } as TextLinePayload),
-      true
+      } as TextLinePayload
     );
 
     i++;
@@ -421,19 +509,17 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
 
   return {
     chunks,
-    decodeTranslatableChunk: (chunkText: string): string => {
-      try {
-        const payload = JSON.parse(chunkText) as Partial<TextLinePayload & TablePayload>;
-        let t = payload.text ?? "";
-        t = restorePlaceholders(t, payload.headingPlaceholders ?? []);
-        t = restorePlaceholders(t, payload.urlPlaceholders ?? []);
-        t = restorePlaceholders(t, payload.codePlaceholders ?? []);
-        t = restorePlaceholders(t, payload.tablePlaceholders ?? []);
-        return t;
-      } catch (error) {
-        console.error('Failed to decode chunk:', error);
-        return chunkText;
-      }
+    decodeTranslatableChunk: (chunk: Chunk): string => {
+      const payload = chunk.payload as Partial<TextLinePayload & TablePayload> | undefined;
+      if (!payload) return '';
+      let t = payload.text ?? "";
+      if (payload.leadingSpacePlaceholders?.length) t = restorePlaceholders(t, payload.leadingSpacePlaceholders);
+      if (payload.headingPlaceholders?.length) t = restorePlaceholders(t, payload.headingPlaceholders);
+      if (payload.htmlCodeTagPlaceholders?.length) t = restorePlaceholders(t, payload.htmlCodeTagPlaceholders);
+      if (payload.urlPlaceholders?.length) t = restorePlaceholders(t, payload.urlPlaceholders);
+      if (payload.codePlaceholders?.length) t = restorePlaceholders(t, payload.codePlaceholders);
+      if (payload.tablePlaceholders?.length) t = restorePlaceholders(t, payload.tablePlaceholders);
+      return t;
     }
   };
 }
@@ -453,9 +539,9 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
  * @returns true if text should be skipped for translation
  */
 function isTechnicalOrEmpty(text: string | null | undefined): boolean {
-  if (!isString(text) || text.trim() === "") return true;
-  
+  if (!isString(text)) return true;
   const t = text.trim();
+  if (t === "") return true;
   
   // Horizontal rules: *** --- ___ (optionally spaces between)
   if (REGEX_PATTERNS.horizontalRuleStar.test(t)) return true;
@@ -504,27 +590,32 @@ function getPreparedBatch(md: string): PreparedBatch {
     const ch = parsed.chunks[idx];
     if (!ch.translatable) continue;
 
-    try {
-      const payload = JSON.parse(ch.text) as Partial<TextLinePayload & TablePayload>;
+    const payload = ch.payload as Partial<TextLinePayload & TablePayload> | undefined;
+    if (!payload) continue;
 
-      // If this is a table chunk, extract and translate cell contents
-      if (ch.type === ChunkType.TABLE && payload.tablePlaceholders) {
-        for (const placeholder of payload.tablePlaceholders) {
-          if (isTechnicalOrEmpty(placeholder.value)) continue;
-          toTranslate.push(placeholder.value);
-          chunkIndexes.push(idx);
-        }
-      } else {
-        // payload.text contains placeholders (@@CODE_0@@ etc.) which are fine.
-        // We decide based on the placeholdered text; if it's only syntax, skip.
-        if (isTechnicalOrEmpty(payload.text)) continue;
-
-        toTranslate.push(payload.text ?? "");
+    // If this is a table chunk, extract and translate cell contents
+    if (ch.type === ChunkType.TABLE && payload.tablePlaceholders) {
+      for (const placeholder of payload.tablePlaceholders) {
+        if (isTechnicalOrEmpty(placeholder.value)) continue;
+        toTranslate.push(placeholder.value);
         chunkIndexes.push(idx);
       }
-    } catch (error) {
-      console.error(`Failed to parse chunk at index ${idx}:`, error);
-      continue;
+    } else {
+      // Strip structural prefix tokens that are always re-added in reconstruction:
+      // @@LEADING_SPACE@@ (repeated) and @@HEADING_MARKER@@ never need to cross the
+      // translation API boundary — getTranslatedMarkdown restores them regardless.
+      let textToTranslate = (payload.text ?? "")
+        .replace(/^(?:@@LEADING_SPACE@@)+/, "")
+        .replace(/^@@HEADING_MARKER@@/, "");
+
+      if (isTechnicalOrEmpty(textToTranslate)) continue;
+      // Skip if no translatable content remains after removing all remaining placeholder tokens
+      // (e.g. a line that is purely inline-code or a bare URL becomes only @@CODE_N@@ / @@URL_N@@)
+      const textWithoutPlaceholders = textToTranslate.replace(/@@[A-Z_]+(?:_\d+)?@@/g, "");
+      if (isTechnicalOrEmpty(textWithoutPlaceholders)) continue;
+
+      toTranslate.push(textToTranslate);
+      chunkIndexes.push(idx);
     }
   }
 
@@ -571,65 +662,69 @@ function decodeHtmlEntities(text: string): string {
 function getTranslatedMarkdown(parsed: ParsedResult, chunkIndexes: number[], translatedArr?: string[]): string {
     if (!translatedArr?.length) return "";
 
-    // Decode HTML entities that may have been introduced by translation services
-    const translatedDecodedArr = translatedArr.map(t => decodeHtmlEntities(t));
-
-    // Put translations back into chunks
-    let translationIdx = 0;
-    const processedChunks = new Set<number>();
-
-    // Build a map of chunk index to translations for better handling
+    // Build a map of chunk index to translations (decode HTML entities inline, single pass)
     const chunkTranslations = new Map<number, string[]>();
-    
     for (let i = 0; i < chunkIndexes.length; i++) {
       const chunkIdx = chunkIndexes[i];
-      if (!chunkTranslations.has(chunkIdx)) {
-        chunkTranslations.set(chunkIdx, []);
-      }
-      chunkTranslations.get(chunkIdx)!.push(translatedDecodedArr[i]);
+      if (!chunkTranslations.has(chunkIdx)) chunkTranslations.set(chunkIdx, []);
+      chunkTranslations.get(chunkIdx)!.push(decodeHtmlEntities(translatedArr[i]));
     }
 
     // Apply translations to chunks
     for (const [chunkIdx, translations] of chunkTranslations.entries()) {
-      if (processedChunks.has(chunkIdx)) continue;
-      
       const ch = parsed.chunks[chunkIdx];
-      try {
-        const payload = JSON.parse(ch.text) as Partial<TextLinePayload & TablePayload>;
+      const payload = ch.payload as Partial<TextLinePayload & TablePayload> | undefined;
+      if (!payload) continue;
 
-        // Handle table chunks - restore all cell translations
-        if (ch.type === ChunkType.TABLE && payload.tablePlaceholders) {
-          for (let i = 0; i < Math.min(payload.tablePlaceholders.length, translations.length); i++) {
-            payload.tablePlaceholders[i].value = translations[i];
-          }
-        } else {
-          // Regular text line - restore placeholders if translation service removed them
-          let translatedText = translations[0] ?? payload.text;
-          const originalText = payload.text ?? "";
-          
-          // Check if heading marker placeholder was stripped by translation service
-          if (payload.headingPlaceholders && payload.headingPlaceholders.length > 0) {
-            const headingToken = payload.headingPlaceholders[0].token;
-            if (originalText.startsWith(headingToken) && !translatedText.startsWith(headingToken)) {
-              // Translation service removed the placeholder, add it back
-              translatedText = headingToken + translatedText;
-            }
-          }
-          
-          payload.text = translatedText;
+      // Handle table chunks - restore all cell translations
+      if (ch.type === ChunkType.TABLE && payload.tablePlaceholders) {
+        for (let i = 0; i < Math.min(payload.tablePlaceholders.length, translations.length); i++) {
+          payload.tablePlaceholders[i].value = translations[i];
         }
-        
-        ch.text = JSON.stringify(payload);
-        processedChunks.add(chunkIdx);
-      } catch (error) {
-        console.error(`Failed to apply translation to chunk ${chunkIdx}:`, error);
+      } else {
+        // Regular text line - restore placeholders if translation service removed them
+        let translatedText = translations[0] ?? payload.text ?? "";
+        const originalText = payload.text ?? "";
+
+        // Normalize <lnkN> / </lnkN> tags: translators may alter internal whitespace or casing.
+        // Must run before the exact-match restorePlaceholders step.
+        if (payload.urlPlaceholders?.length) {
+          translatedText = translatedText
+            .replace(/<\s*\/\s*lnk\s*(\d+)\s*>/gi, (_, n) => `</lnk${n}>`)
+            .replace(/<\s*lnk\s*(\d+)\s*>/gi,      (_, n) => `<lnk${n}>`);
+
+          // Google sometimes shuffles the space that appeared BEFORE an opening link tag
+          // to INSIDE the tag: "- <lnk0>text" → "-<lnk0> text"
+          // Fix: when a non-space char immediately precedes <lnkN> and whitespace immediately
+          // follows it, the space belongs before the tag, not after.
+          translatedText = translatedText.replace(/(\S)(<lnk\d+>)\s+/g, '$1 $2');
+        }
+
+        // Check if leading space placeholders were stripped by translation service
+        if (payload.leadingSpacePlaceholders && payload.leadingSpacePlaceholders.length > 0) {
+          const spaceToken = payload.leadingSpacePlaceholders[0].token; // "@@LEADING_SPACE@@"
+          const originalLeadingTokens = originalText.match(/^(?:@@LEADING_SPACE@@)+/)?.[0] ?? "";
+          if (originalLeadingTokens && !translatedText.startsWith(spaceToken)) {
+            translatedText = originalLeadingTokens + translatedText;
+          }
+        }
+
+        // Check if heading marker placeholder was stripped by translation service
+        if (payload.headingPlaceholders && payload.headingPlaceholders.length > 0) {
+          const headingToken = payload.headingPlaceholders[0].token;
+          if (originalText.startsWith(headingToken) && !translatedText.startsWith(headingToken)) {
+            translatedText = headingToken + translatedText;
+          }
+        }
+
+        payload.text = translatedText;
       }
     }
 
     // Rebuild markdown by decoding all chunks and restoring placeholders
     const outLines = parsed.chunks.map((ch): string => {
         if (!ch.translatable) return ch.text;
-        return parsed.decodeTranslatableChunk(ch.text);
+        return parsed.decodeTranslatableChunk(ch);
     });
 
     return outLines.join("\n");

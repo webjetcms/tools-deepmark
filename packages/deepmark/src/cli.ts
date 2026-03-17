@@ -63,19 +63,26 @@ export function createCli() {
 
 				const translatedArr = await translate({ strings: preparedBatch.toTranslate, mode: options.mode, config });
 
+				// getTranslatedMarkdown mutates parsed chunk state, so it must run sequentially per language
+				const perLangResults: Array<{ targetLanguage: string; markdown: string }> = [];
 				for (const targetLanguage of config.outputLanguages) {
-					let markdown2 = getTranslatedMarkdown(preparedBatch.parsed, preparedBatch.chunkIndexes, translatedArr[targetLanguage]);
-        			markdown2 = await customizeTranslatedMarkdown(markdown2, options, config, targetLanguage, ignoredContent);
+					perLangResults.push({
+						targetLanguage,
+						markdown: getTranslatedMarkdown(preparedBatch.parsed, preparedBatch.chunkIndexes, translatedArr[targetLanguage])
+					});
+				}
 
-					console.log("- writing file");
+				// customizeTranslatedMarkdown and file writes are independent per language — run in parallel
+				await Promise.all(perLangResults.map(async ({ targetLanguage, markdown }) => {
+					const markdown2 = await customizeTranslatedMarkdown(markdown, options, config, targetLanguage, ignoredContent);
 					await fs.outputFile(
 						outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)),
 						markdown2,
 						{ encoding: "utf-8" }
 					);
-					console.log("- file translation DONE");
-        			console.log("");
-				}
+				}));
+				console.log("- file translation DONE");
+        		console.log("");
 			}
 
 			console.log("***** Translation DONE *****");
@@ -89,18 +96,16 @@ export function createCli() {
 				// translate strings
 				const translations = await translate({ strings, mode: options.mode, config });
 
-				for (const targetLanguage of config.outputLanguages) {
-					// replace strings
+				await Promise.all(config.outputLanguages.map(targetLanguage => {
 					const _json = replaceJsonOrYamlStrings({
 						source: json,
 						strings: translations[targetLanguage]!,
 						config
 					});
-					// write translated file
-					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)), _json, {
+					return fs.outputFile(outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)), _json, {
 						encoding: 'utf-8'
 					});
-				}
+				}));
 			}
 
 			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.yaml) {
@@ -111,26 +116,26 @@ export function createCli() {
 				// translate strings
 				const translations = await translate({ strings, mode: options.mode, config });
 
-				for (const targetLanguage of config.outputLanguages) {
-					// replace strings
-					const _json = replaceJsonOrYamlStrings({
+				await Promise.all(config.outputLanguages.map(targetLanguage => {
+					const _yaml = replaceJsonOrYamlStrings({
 						source: yaml,
 						strings: translations[targetLanguage]!,
 						type: 'yaml',
 						config
 					});
-					// write translated file
-					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)), _json, {
+					return fs.outputFile(outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)), _yaml, {
 						encoding: 'utf-8'
 					});
-				}
+				}));
 			}
 
-			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.others) {
-				for (const targetLanguage of config.outputLanguages) {
-					await fs.copy(sourceFilePath, outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)));
-				}
-			}
+			await Promise.all(
+				sourceFilePaths.others.flatMap(({ sourceFilePath, outputFilePath }) =>
+					config.outputLanguages.map(targetLanguage =>
+						fs.copy(sourceFilePath, outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)))
+					)
+				)
+			);
 		});
 
 	return program;

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.5
+
+Improved translation accuracy and performance across all file types.
+
+- Preserve leading whitespace, `<iframe>` blocks, and `<code>` tags during translation (previously lost or altered).
+- Fix Markdown links being reordered or dropped by Google Translate.
+- De-duplicate repeated strings before sending them to the translation API, reducing usage and cost.
+- Translate output files for all target languages in parallel, improving performance when multiple languages are configured.
+- Fix several `WebjetCMS` post-processing regex issues that could break list formatting in translated output.
+
 ## 0.3.4
 
 Skip **formatting** before content parsing to improve translation quality (it was causing issues with certain markdown structures).
