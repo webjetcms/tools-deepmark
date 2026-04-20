@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.6
+
+- upgraded `google-cloud/translate` from v8.5.1 to v9.3.0
+- change `google-cloud/translate` to use newer and better `V3` API instead of `V2` API, which should improve translation quality and performance.
+- remove link protection and translation of link sub-categories because newer Google translation API handles them without problems
+
+Recommendation for users: From now one you should use `translationEngine: "google"` in your `deepmark.config.js` to benefit from these improvements. If you were using `translationEngine: "deepl"` before, you can switch to Google Translate now for better results.
+
 ## 0.3.5
 
 Improved translation accuracy and performance across all file types.

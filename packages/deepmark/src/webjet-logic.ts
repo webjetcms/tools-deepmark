@@ -70,7 +70,6 @@ export async function customizeTranslatedMarkdown(markdown2: string, options: an
     }
 
     //Enhance markdown
-    markdown2 = await _translateLinkSubCategory(markdown2, options, config, targetLanguage);
     markdown2 = _markdownRegexEdit(markdown2);
 
     //Return blocks of code
@@ -107,56 +106,6 @@ function _insertBlocksOfCode(markdown2: string, extractedBlocksOfCode: RegExpMat
     return markdown2;
 }
 
-/**
- * Find link's in the markddown string. From links extract the subcategory that start with symbol # and translate it using deepl.
- * Translated
- * 
- * @param {String} markdown 
- * @param {*} options 
- * @param {*} config 
- * @param {String} targetLanguage 
- * @returns - enhanced markdown with translated subcategories in links
- */
-async function _translateLinkSubCategory(markdown: string, options: { mode: any; }, config: any, targetLanguage: 'en-US' | 'sk' | 'cs') {
-    //Extract links from the markdown
-    const links  = markdown.match(/(\[[^\]]+\])\((?!http)[^#\)]*(#[^\)]+)\)/g);
-    if(links === undefined || links === null) return markdown;
-  
-    //Extract subcategories from the links, and push them to the array "strings"
-    let strings: any[] = [];
-    links.forEach(async (link: string) => {
-      let subCategory = link.match(/#[^\)]+\)/g);
-      if(subCategory !== undefined && subCategory !== null) {
-        let subCategoryString = subCategory[0].substring(1, subCategory[0].length-1); //remove # from start AND from end )
-        subCategoryString = subCategoryString.replace(/---/g, ' - ');
-        subCategoryString = subCategoryString.replace(/([^\s]{1})-([^\s]{1})/g, '$1 $2');
-        subCategoryString = subCategoryString.replace(/([^\s]{1})-([^\s]{1})/g, '$1 $2');
-        strings.push( subCategoryString.charAt(0).toUpperCase() + subCategoryString.slice(1) );
-      }
-    });
-  
-    //Translate the subcategories
-    const translations = await translate({ strings, mode: options.mode, config });
-  
-    let targetLanguageTranslations = translations[targetLanguage];
-    if(targetLanguageTranslations !== undefined && targetLanguageTranslations !== null) {
-        //Replace subcategories in the markdown with the translated ones
-        for(let i = 0; i < strings.length; i++) {
-            let originalForm = strings[i];
-            originalForm = originalForm.toLowerCase();
-            originalForm = originalForm.replaceAll(" ", "-") + ")";
-
-            let translatedForm = targetLanguageTranslations[i];
-            translatedForm = translatedForm.toLowerCase();
-            translatedForm = translatedForm.replaceAll(" ", "-") + ")";
-
-            let newLine = links[i].replace(originalForm, translatedForm);
-            markdown = markdown.replace(links[i], newLine);
-        }
-    }
-  
-    return markdown;
-}
 
 /**
  * Edit (enhance) the markdown string using regex operations.
