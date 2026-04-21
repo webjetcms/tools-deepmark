@@ -4,7 +4,7 @@ import np from 'node:path';
 import type { Config } from './config.js';
 import { Database } from './database.js';
 import pkg from '@google-cloud/translate';
-const { Translate } = pkg.v2;
+const { TranslationServiceClient } = pkg.v3;
 
 export async function translate({
 	strings,
@@ -31,10 +31,21 @@ export async function translate({
 		let engine: any;
 		if (config.translationEngine === 'google'){
 			console.log("   -with google");
-			const GOOGLE_AUTH_KEY = process.env.GOOGLE_AUTH_KEY;
-			if (!GOOGLE_AUTH_KEY)
-				throw new Error("GOOGLE_AUTH_KEY environment variable must be set");
-			engine = new Translate({key : GOOGLE_AUTH_KEY} );
+			const GOOGLE_PROJECT_ID = process.env.GOOGLE_PROJECT_ID;
+			const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
+			const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
+			if (!GOOGLE_PROJECT_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY)
+				throw new Error("GOOGLE_PROJECT_ID, GOOGLE_CLIENT_EMAIL, and GOOGLE_PRIVATE_KEY environment variables must be set");
+			engine = {
+				client: new TranslationServiceClient({
+					credentials: {
+						client_email: GOOGLE_CLIENT_EMAIL,
+						private_key: GOOGLE_PRIVATE_KEY,
+					},
+					projectId: GOOGLE_PROJECT_ID,
+				}),
+				projectId: GOOGLE_PROJECT_ID,
+			};
 		}
 		else {
 			console.log("   -with deepl");
@@ -127,11 +138,14 @@ async function translateImpl(
 
 	let uniqueResults: string[];
 	if (config.translationEngine === 'google') {
-		const [translations] = await engine.translate(uniqueStrings, {
-			from: config.sourceLanguage,
-			to: targetLanguage,
+		const [response] = await engine.client.translateText({
+			parent: `projects/${engine.projectId}/locations/global`,
+			contents: uniqueStrings,
+			mimeType: 'text/html',
+			sourceLanguageCode: config.sourceLanguage,
+			targetLanguageCode: targetLanguage,
 		});
-		uniqueResults = Array.isArray(translations) ? translations : [translations];
+		uniqueResults = response.translations.map((t: any) => t.translatedText);
 	} else {
 		const raw = await engine.translateText(
 			uniqueStrings,

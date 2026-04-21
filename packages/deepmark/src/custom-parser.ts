@@ -291,43 +291,6 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
   };
 
   /**
-   * Protects Markdown link syntax from translation using XML tag pairs.
-   * Wraps [label](url) as <lnkN>label</lnkN> so that:
-   *   - The label text IS translated (it is visible text between the tags)
-   *   - The opening [ and closing ](url) are opaque placeholders stored in the tag tokens
-   *   - Both DeepL (tagHandling:'html') and Google (default format:'html') treat
-   *     unknown XML-like tags as non-translatable markup and preserve them exactly.
-   * This avoids the two failure modes of @@token@@ style placeholders:
-   *   1. Google moving a bracket-like opening token to after the phrase
-   *   2. Google dropping a closing token that immediately follows a word character
-   * Works for both regular links [text](url) and images ![alt](url).
-   *
-   * @param line - Text line to process
-   * @returns Line with link syntax replaced by <lnkN>label</lnkN> pairs
-   */
-  const protectLinkUrls = (line: string): ProtectedResult => {
-    const placeholders: Placeholder[] = [];
-    let idx: number = 0;
-
-    const text: string = line.replace(REGEX_PATTERNS.markdownLink, (_m: string, label: string, url: string, titlePart?: string): string => {
-      const openTag  = `<lnk${idx}>`;
-      const closeTag = `</lnk${idx}>`;
-
-      const isImage = label.startsWith('!');
-      const openBracket = isImage ? '![' : '[';
-      const innerLabel = label.slice(openBracket.length, -1); // strip '[' (or '![') and closing ']'
-
-      placeholders.push({ token: openTag,  value: openBracket });
-      placeholders.push({ token: closeTag, value: `](${url}${titlePart ?? ''})` });
-      idx++;
-
-      return `${openTag}${innerLabel}${closeTag}`;
-    });
-
-    return { text, placeholders };
-  };
-
-  /**
    * Protects leading spaces from translation by replacing them with @@LEADING_SPACE@@ tokens.
    * Translation services often strip leading whitespace, so each space is replaced with a token
    * that survives the translation round-trip.
@@ -487,7 +450,7 @@ function parseMarkdownForTranslation(md: string): ParsedResult {
     const spacesProtected = protectLeadingSpaces(line);
     const headingProtected = protectHeadingMarkers(spacesProtected.text);
     const htmlCodeTagsProtected = protectHtmlCodeTags(headingProtected.text);
-    const urlProtected = protectLinkUrls(htmlCodeTagsProtected.text);
+    const urlProtected = { text: htmlCodeTagsProtected.text, placeholders: [] as Placeholder[] };
     const codeProtected = protectInlineCode(urlProtected.text);
 
     push(
