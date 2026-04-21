@@ -1,14 +1,13 @@
-import { Command, Option } from 'commander';
+import { Command } from 'commander';
 import fs from 'fs-extra';
-import np from 'node:path';
-import nurl from 'node:url';
-import { getMarkdown, getMdast } from './ast/mdast.js';
 import type { Config, UserConfig } from './config.js';
 import { resolveConfig, getSourceFilePaths } from './config.js';
-import { extractJsonOrYamlStrings, extractMdastStrings } from './extract.js';
+import { extractJsonOrYamlStrings } from './extract.js';
 import { format } from './format.js';
-import { replaceJsonOrYamlStrings, replaceMdastStrings } from './replace.js';
+import { replaceJsonOrYamlStrings } from './replace.js';
 import { translate } from './translate.js';
+import { beforeFormatMarkdownPrepare, logIgnoredContentInfo, customizeTranslatedMarkdown, getConfigFilePath } from "./webjet-logic.js";
+import { getPreparedBatch, getTranslatedMarkdown } from "./custom-parser.js";
 
 export function createCli() {
 	const program = new Command();
@@ -43,31 +42,51 @@ export function createCli() {
 			// resolve source paths
 			const sourceFilePaths = await getSourceFilePaths(config);
 
+			console.log("***** Starting translation *****");
 			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.md) {
+				console.log("File : ./docs" + sourceFilePath.split("/docs")[1]);
+				console.log("- extracting file");
 				const markdown = await getFile(sourceFilePath);
 
-				// extract strings
-				const mdast = getMdast(await format(markdown));
-				const strings = extractMdastStrings({ mdast, config });
+				let { result, ignoredContent }: { result: string; ignoredContent: any } = beforeFormatMarkdownPrepare(markdown);
 
-				// translate strings
-				const translations = await translate({ strings, mode: options.mode, config });
+				//Optional: log ignored content
+				//logIgnoredContentInfo(ignoredContent);
 
+				console.log("- translating file");
+				
+				// !! - try getPreparedBatch WITHOUT formating the markdown (it was killing spacing between link, list etc)
+				//const formatted_markdown: string = await format(result);
+				const preparedBatch = getPreparedBatch(result);
+
+      			//console.log("Prepared batch:", preparedBatch);
+
+				const translatedArr = await translate({ strings: preparedBatch.toTranslate, mode: options.mode, config });
+
+				// getTranslatedMarkdown mutates parsed chunk state, so it must run sequentially per language
+				const perLangResults: Array<{ targetLanguage: string; markdown: string }> = [];
 				for (const targetLanguage of config.outputLanguages) {
-					// replace strings
-					const _mdast = replaceMdastStrings({
-						mdast,
-						strings: translations[targetLanguage]!,
-						config
+					perLangResults.push({
+						targetLanguage,
+						markdown: getTranslatedMarkdown(preparedBatch.parsed, preparedBatch.chunkIndexes, translatedArr[targetLanguage])
 					});
-					// write translated file
-					await fs.outputFile(
-						outputFilePath.replace(/\$langcode\$/, targetLanguage),
-						getMarkdown(_mdast),
-						{ encoding: 'utf-8' }
-					);
 				}
+
+				// customizeTranslatedMarkdown and file writes are independent per language — run in parallel
+				await Promise.all(perLangResults.map(async ({ targetLanguage, markdown }) => {
+					const markdown2 = await customizeTranslatedMarkdown(markdown, options, config, targetLanguage, ignoredContent);
+					await fs.outputFile(
+						outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)),
+						markdown2,
+						{ encoding: "utf-8" }
+					);
+				}));
+				console.log("- file translation DONE");
+        		console.log("");
 			}
+
+			console.log("***** Translation DONE *****");
+    		console.log("");
 
 			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.json) {
 				const json = await getFile(sourceFilePath);
@@ -77,18 +96,16 @@ export function createCli() {
 				// translate strings
 				const translations = await translate({ strings, mode: options.mode, config });
 
-				for (const targetLanguage of config.outputLanguages) {
-					// replace strings
+				await Promise.all(config.outputLanguages.map(targetLanguage => {
 					const _json = replaceJsonOrYamlStrings({
 						source: json,
 						strings: translations[targetLanguage]!,
 						config
 					});
-					// write translated file
-					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, targetLanguage), _json, {
+					return fs.outputFile(outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)), _json, {
 						encoding: 'utf-8'
 					});
-				}
+				}));
 			}
 
 			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.yaml) {
@@ -99,42 +116,42 @@ export function createCli() {
 				// translate strings
 				const translations = await translate({ strings, mode: options.mode, config });
 
-				for (const targetLanguage of config.outputLanguages) {
-					// replace strings
-					const _json = replaceJsonOrYamlStrings({
+				await Promise.all(config.outputLanguages.map(targetLanguage => {
+					const _yaml = replaceJsonOrYamlStrings({
 						source: yaml,
 						strings: translations[targetLanguage]!,
 						type: 'yaml',
 						config
 					});
-					// write translated file
-					await fs.outputFile(outputFilePath.replace(/\$langcode\$/, targetLanguage), _json, {
+					return fs.outputFile(outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)), _yaml, {
 						encoding: 'utf-8'
 					});
-				}
+				}));
 			}
 
-			for (const { sourceFilePath, outputFilePath } of sourceFilePaths.others) {
-				for (const targetLanguage of config.outputLanguages) {
-					await fs.copy(sourceFilePath, outputFilePath.replace(/\$langcode\$/, targetLanguage));
-				}
-			}
+			await Promise.all(
+				sourceFilePaths.others.flatMap(({ sourceFilePath, outputFilePath }) =>
+					config.outputLanguages.map(targetLanguage =>
+						fs.copy(sourceFilePath, outputFilePath.replace(/\$langcode\$/, shortLangCode(targetLanguage)))
+					)
+				)
+			);
 		});
 
 	return program;
 }
 
-async function getThenResolveConfig(path?: string): Promise<Config> {
-	const configFilePath = path
-		? path.startsWith('/')
-			? path
-			: np.resolve(process.cwd(), path)
-		: np.resolve(process.cwd(), 'deepmark.config.mjs');
-
+async function getThenResolveConfig(path: string): Promise<Config> {
+	const configFilePath: string = await getConfigFilePath(path, true);
 	const userConfig: UserConfig = (await import(configFilePath)).default;
 	return resolveConfig(userConfig);
 }
 
 async function getFile(path: string): Promise<string> {
 	return await fs.readFile(path, { encoding: 'utf-8' });
+}
+
+//WebJET CMS en-US converted to just en
+function shortLangCode(targetLanguage: string): string {
+	return targetLanguage.split('-')[0];
 }

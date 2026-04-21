@@ -150,16 +150,25 @@ export function getMdast(markdown: string): MdRoot {
 
 export function getMarkdown(mdast: MdRoot): string {
 	return toMarkdown(mdast, {
-		extensions: [frontmatterToMarkdown('yaml'), mdxToMarkdown(), htmlCommentToMarkdown()],
-		join: [
-			(__, _, parent) => {
-				if (mdNodeIsJsxElement(parent)) {
-					return 0;
-				}
-
-				return 1;
-			}
-		]
+	    extensions: [frontmatterToMarkdown('yaml'), mdxToMarkdown(), htmlCommentToMarkdown()],
+	    join: [
+	       (__, _, parent) => {
+		       if (mdNodeIsJsxElement(parent)) {
+			       return 0;
+		       }
+		       if (mdNodeIs(parent, 'list') || mdNodeIs(parent, 'listItem')) {
+					// Do NOT put redundant empty line between list options
+			       return 0;
+		       }
+		       return 1;
+	       }
+	    ],
+	    handlers: {
+	       text(node) {
+		       // Return text value without escaping underscores
+		       return node.value;
+	       }
+	    }
 	});
 }
 

@@ -25,6 +25,10 @@ export interface ConfigBase {
 
 export interface Config extends ConfigBase {
 	/**
+	 * Translation engine used for translation either google or deepl
+	 */
+	translationEngine: string;
+	/**
 	 * Override current working directory, defaults to `process.cwd()`.
 	 */
 	cwd: string;
@@ -88,6 +92,10 @@ export interface Config extends ConfigBase {
 }
 
 export interface UserConfig extends ConfigBase {
+	/**
+	 * Translation engine used for translation either google or deepl
+	 */
+	translationEngine: string;
 	/**
 	 * Override current working directory, defaults to `process.cwd()`.
 	 */
@@ -310,6 +318,7 @@ export function isHtmlTag(name: string): name is HtmlTag {
 export function resolveConfig({
 	sourceLanguage,
 	outputLanguages,
+	translationEngine,
 	directories,
 	cwd,
 	files,
@@ -322,6 +331,7 @@ export function resolveConfig({
 	return {
 		sourceLanguage,
 		outputLanguages,
+		translationEngine,
 		directories,
 		cwd: cwd ? (cwd.startsWith('/') ? cwd : np.resolve(process.cwd(), cwd)) : process.cwd(),
 		files: files
@@ -463,6 +473,11 @@ export async function getSourceFilePaths(
 
 			if (path.endsWith('.yaml') || path.endsWith('.yml')) {
 				paths.yaml.push(filePaths);
+				continue;
+			}
+
+			//Exclude pictures, PDF and docx files
+			if (path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".gif") || path.endsWith(".pdf") || path.endsWith(".docx")) {
 				continue;
 			}
 
